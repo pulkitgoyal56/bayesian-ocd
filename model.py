@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.distributions as dis
 import numpy as np
 import time
-from base_modules import *
+import base_modules as bm
 import scipy.io as sio
 import colorednoise  # Use Pink Noise
 import logging
@@ -50,25 +50,25 @@ class BayesianBehaviorAgent(nn.Module):
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # ==============================  network definition ================================
-        st_cnn_v, self.input_feature_size = make_cnn(self.input_size[0])  # for value function network
-        st_cnn_h, self.input_feature_size = make_cnn(self.input_size[0])  # for h encoding network
-        st_cnn_z, self.input_feature_size = make_cnn(self.input_size[0] * 2)  # for z_q encoding network
+        st_cnn_v, self.input_feature_size = bm.make_cnn(self.input_size[0])  # for value function network
+        st_cnn_h, self.input_feature_size = bm.make_cnn(self.input_size[0])  # for h encoding network
+        st_cnn_z, self.input_feature_size = bm.make_cnn(self.input_size[0] * 2)  # for z_q encoding network
 
-        self.f_x2phi_v = nn.Sequential(st_cnn_v, make_mlp(self.input_feature_size, [h_size], h_size, nn.ReLU, last_layer_linear=True))
-        self.f_x2phi_h = nn.Sequential(st_cnn_h, make_mlp(self.input_feature_size, [h_size], h_size, nn.ReLU, last_layer_linear=True))
-        self.f_x2phi_z = nn.Sequential(st_cnn_z, make_mlp(self.input_feature_size, [h_size], h_size, nn.ReLU, last_layer_linear=True))
+        self.f_x2phi_v = nn.Sequential(st_cnn_v, bm.make_mlp(self.input_feature_size, [h_size], h_size, nn.ReLU, last_layer_linear=True))
+        self.f_x2phi_h = nn.Sequential(st_cnn_h, bm.make_mlp(self.input_feature_size, [h_size], h_size, nn.ReLU, last_layer_linear=True))
+        self.f_x2phi_z = nn.Sequential(st_cnn_z, bm.make_mlp(self.input_feature_size, [h_size], h_size, nn.ReLU, last_layer_linear=True))
 
         rnn_input_size = self.h_size
         self.rnn = nn.GRU(rnn_input_size, h_size, batch_first=True)
 
-        self.h2muzp = make_mlp(h_size, [h_size, h_size], z_size, nn.ReLU, last_layer_linear=True)
-        self.h2aspsigzp = make_mlp(h_size, [h_size, h_size], z_size, nn.ReLU, last_layer_linear=True)
+        self.h2muzp = bm.make_mlp(h_size, [h_size, h_size], z_size, nn.ReLU, last_layer_linear=True)
+        self.h2aspsigzp = bm.make_mlp(h_size, [h_size, h_size], z_size, nn.ReLU, last_layer_linear=True)
 
-        decoder = make_mlp(self.z_size, [h_size], h_size, nn.ReLU)
-        self.pred_mux = nn.Sequential(decoder, UnsqueezeModule(-1), UnsqueezeModule(-1), make_dcnn(h_size, 6))
+        decoder = bm.make_mlp(self.z_size, [h_size], h_size, nn.ReLU)
+        self.pred_mux = nn.Sequential(decoder, bm.UnsqueezeModule(-1), bm.UnsqueezeModule(-1), bm.make_dcnn(h_size, 6))
 
-        self.hg2muz_q = make_mlp(self.input_feature_size, [h_size], z_size, nn.ReLU, last_layer_linear=True)
-        self.hg2aspsigz_q = make_mlp(self.input_feature_size, [h_size], z_size, nn.ReLU, last_layer_linear=True)
+        self.hg2muz_q = bm.make_mlp(self.input_feature_size, [h_size], z_size, nn.ReLU, last_layer_linear=True)
+        self.hg2aspsigz_q = bm.make_mlp(self.input_feature_size, [h_size], z_size, nn.ReLU, last_layer_linear=True)
 
         # ================================= RL part (SAC) ===================================
 
@@ -101,17 +101,17 @@ class BayesianBehaviorAgent(nn.Module):
         policy_input_size = self.z_size
         
         # policy network
-        self.f_s2pi0 = ContinuousActionPolicyNetwork(policy_input_size, self.action_size, hidden_layers=self.policy_layers)
+        self.f_s2pi0 = bm.ContinuousActionPolicyNetwork(policy_input_size, self.action_size, hidden_layers=self.policy_layers)
         # V network
-        self.f_s2v = ContinuousActionVNetwork(value_input_size, hidden_layers=self.value_layers)
+        self.f_s2v = bm.ContinuousActionVNetwork(value_input_size, hidden_layers=self.value_layers)
         # target V network
-        self.f_s2v_tar = ContinuousActionVNetwork(value_input_size, hidden_layers=self.value_layers)
+        self.f_s2v_tar = bm.ContinuousActionVNetwork(value_input_size, hidden_layers=self.value_layers)
         # synchronize the target network with the main network
         self.f_s2v_tar.load_state_dict(self.f_s2v.state_dict())
         # Q network 1
-        self.f_sa2q1 = ContinuousActionQNetwork(value_input_size, self.action_size, hidden_layers=self.value_layers) 
+        self.f_sa2q1 = bm.ContinuousActionQNetwork(value_input_size, self.action_size, hidden_layers=self.value_layers) 
         # Q network 2
-        self.f_sa2q2 = ContinuousActionQNetwork(value_input_size, self.action_size, hidden_layers=self.value_layers)
+        self.f_sa2q2 = bm.ContinuousActionQNetwork(value_input_size, self.action_size, hidden_layers=self.value_layers)
         
         # =================================== RL part end ==================================
 
@@ -758,7 +758,7 @@ class BayesianBehaviorAgent(nn.Module):
 
         try:
             data['goal_obs'] = np.array(self.goal_obs)
-        except:
+        except Exception:
             pass
 
         if goal_pos is not None:
