@@ -5,7 +5,7 @@ import warnings
 
 class ReplayBuffer:
     def __init__(self, state_shape, action_shape, max_num_seq=int(2**12), seq_len=30,
-                 batch_size=32, device='cpu', obs_uint8=False):
+                 batch_size=32, device=torch.device('cpu'), obs_uint8=False):
         super(ReplayBuffer, self).__init__()
 
         self.seq_len = seq_len
@@ -33,7 +33,7 @@ class ReplayBuffer:
 
         # Allocate GPU space for sampling batch data
         self.length_b = torch.zeros((batch_size,), dtype=torch.int, device=self.device)
-        self.masks_b = torch.zeros((batch_size, seq_len,), dtype=bool, device=self.device)
+        self.masks_b = torch.zeros((batch_size, seq_len,), dtype=torch.bool, device=self.device)
         self.actions_b = torch.zeros((batch_size, seq_len, *self.action_shape), dtype=torch.float32, device=self.device)
         self.states_b = torch.zeros((batch_size, seq_len + 1, *self.state_shape), dtype=torch.float32, device=self.device)
         self.rewards_b = torch.zeros((batch_size, seq_len,), dtype=torch.float32, device=self.device)
