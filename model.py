@@ -26,7 +26,7 @@ class BayesianBehaviorAgent(nn.Module):
                  beta_z=0.1,
                  decision_precision_threshold=0.05,
                  max_iterations=16,
-                 rl_config=None,
+                 rl_config=dict(),
                  record_final_z_q=False,
                  device=None) -> None:
         super().__init__()
@@ -428,7 +428,7 @@ class BayesianBehaviorAgent(nn.Module):
         # ==================================== Predictive Coding ====================================        
         phi_batch = self.f_x2phi_h(x_batch.reshape([minibatch_size * (max_stps + 1), *self.input_size]))
         phi_batch = phi_batch.reshape([minibatch_size, max_stps + 1, -1])
-        h_batch, _ = self.rnn(phi_batch, torch.unsqueeze(h_beg, 0))   # h_batch shape: [minibatch_size, max_stps + 1, h_size]
+        h_batch, _ = self.rnn(phi_batch, torch.unsqueeze(h_beg, 0))   # h_batch shape: [minibatch_size, max_stps + 1, h_size] (same for phi_batch)
 
         muz_p_batch = self.h2muzp(h_batch[:, :-1]) # shape: [minibatch_size, max_stps, z_size]
         aspsigz_p_batch = self.h2aspsigzp(h_batch[:, :-1])
