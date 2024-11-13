@@ -45,8 +45,8 @@ def run_trial(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda:{}".format(seed % torch.cuda.device_count()))
+    if torch.backend.mps.is_available():
+        device = torch.device("mps:{}".format(seed % torch.cuda.device_count()))
         torch.cuda.manual_seed_all(0)
     else:
         device = torch.device("cpu")
