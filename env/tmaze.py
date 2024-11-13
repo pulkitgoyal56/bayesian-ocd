@@ -418,6 +418,78 @@ class TMazeEnv(gym.Env):
         else:
             return np.concatenate((frame3[:, 8:, :3], frame2[:, :, :3], frame[:, :, :3],
                                     frame4[:, :, :3], frame3[:, :8, :3]), axis=1)
+
+    @staticmethod
+    def draw_tmaze(plot_exit_line=False):
+        import matplotlib.pyplot as plt
+
+        zoom_coef = 2
+
+        xv = []
+        yv = []
+        cv = []
+
+        # top-left
+        xv.append([-5, -4, -4, -5, -5])
+        yv.append([-1, -1, 3, 3, -1])
+        cv.append([0.8000, 0.38000, 0.1000])
+
+        # top-right
+        xv.append([5, 4, 4, 5, 5])
+        yv.append([-1, -1, 3, 3, -1])
+        cv.append([0.1000, 0.3800, 0.8000])
+
+        # top
+        xv.append([2.5, -2.5, -2.5, 2.5, 2.5])
+        yv.append([2, 2, 3, 3, 2])
+        cv.append([0.5200, 0.5200, 0.5200])
+
+        # middle-left
+        xv.append([-1.5, -4, -4, -1.5, -1.5])
+        yv.append([-1, -1, 0, 0, -1])
+        cv.append([0.8000, 0.5000, 0.5000])
+
+        # middle-right
+        xv.append([1.5, 4, 4, 1.5, 1.5])
+        yv.append([-1, -1, 0, 0, -1])
+        cv.append([0.5000, 0.5000, 0.8000])
+
+        # bottom-left
+        xv.append([-1.5, -1.5, -0.5, -0.5, -0.5])
+        yv.append([-4, 0, 0, -4, -4])
+        cv.append([0.5200, 0.5200, 0.5200])
+
+        # bottom-right
+        xv.append([1.5, 1.5, 0.5, 0.5, 0.5])
+        yv.append([-4, 0, 0, -4, -4])
+        cv.append([0.5200, 0.5200, 0.5200])
+
+        # bottom
+        xv.append([-1.5, -1.5, 1.5, 1.5, 1.5])
+        yv.append([-4, -5, -5, -4, -4])
+        cv.append([0.7200, 0.2400, 0.7200])
+
+        if plot_exit_line:
+            # exit line
+            xv.append([-4, -2.5, -2.5, -4, -4])
+            yv.append([2, 2, 2.05, 2.05, 2])
+            cv.append([0.2200, 0.8200, 0.2200])
+
+            # exit line
+            xv.append([4, 2.5, 2.5, 4, 4])
+            yv.append([2, 2, 2.05, 2.05, 2])
+            cv.append([0.2200, 0.8200, 0.2200])
+
+        for i in range(len(xv)):
+            plt.fill([xi * zoom_coef for xi in xv[i]], 
+                    [yi * zoom_coef for yi in yv[i]], 
+                    color=cv[i], 
+                    edgecolor='none')
+
+        plt.xlim([-10.5, 10.5])
+        plt.ylim([-10.5, 6.5])
+        plt.axis('off')
+        plt.box(False)
  
     def close(self):
         p.disconnect(self.client)
