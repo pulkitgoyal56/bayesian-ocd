@@ -13,9 +13,9 @@ class UnsqueezeModule(nn.Module):
 
 def make_dcnn(feature_size, out_channels):
     dcnn = nn.Sequential(
-        nn.ConvTranspose2d(feature_size, 64, [1, 4], 1, 0),
+        nn.ConvTranspose2d(feature_size, 64, (1, 4), 1, 0),
         nn.ReLU(),
-        nn.ConvTranspose2d(64, 16, [2, 4], [1, 2], [0, 1]),
+        nn.ConvTranspose2d(64, 16, (2, 4), (1, 2), (0, 1)),
         nn.ReLU(),
         nn.ConvTranspose2d(16, 16, 4, 2, 1),
         nn.ReLU(),
@@ -36,7 +36,6 @@ def make_dcnn(feature_size, out_channels):
 
 
 def make_cnn(n_channels):
-
     cnn_module_list = nn.ModuleList()
     cnn_module_list.append(nn.Conv2d(n_channels, 8, 4, 2, 1))
     cnn_module_list.append(nn.ReLU())
@@ -44,9 +43,9 @@ def make_cnn(n_channels):
     cnn_module_list.append(nn.ReLU())
     cnn_module_list.append(nn.Conv2d(16, 16, 4, 2, 1))
     cnn_module_list.append(nn.ReLU())
-    cnn_module_list.append(nn.Conv2d(16, 64, [2, 4], 2, [0, 1]))
+    cnn_module_list.append(nn.Conv2d(16, 64, (2, 4), 2, (0, 1)))
     cnn_module_list.append(nn.ReLU())
-    cnn_module_list.append(nn.Conv2d(64, 256, [1, 4], [1, 4], 0))
+    cnn_module_list.append(nn.Conv2d(64, 256, (1, 4), (1, 4), 0))
     cnn_module_list.append(nn.ReLU())
 
     cnn_module_list.append(nn.Flatten())

@@ -1,13 +1,15 @@
+import time
+import logging
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as dis
-import numpy as np
-import time
-import base_modules as bm
 import scipy.io as sio
 import colorednoise  # Use Pink Noise
-import logging
+
+import base_modules as bm
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,6 +18,7 @@ EPS = 1e-6  # Avoid NaN (prevents division by zero or log of zero)
 LOG_STD_MAX = 10
 LOG_STD_MIN = -20
 REG = 1e-3  # regularization of the actor
+
 
 class BayesianBehaviorAgent(nn.Module):
     def __init__(self,
@@ -216,6 +219,16 @@ class BayesianBehaviorAgent(nn.Module):
             mean_s = torch.zeros_like(sigz_p_expand)
             std_s = 2 * torch.ones_like(mean_s)
 
+            z_q : torch.Tensor = None  # type: ignore 
+            muz_q : torch.Tensor = None  # type: ignore
+            sigz_q : torch.Tensor = None  # type: ignore
+            mux_pred : torch.Tensor = None  # type: ignore
+
+            idx : torch.Tensor = None  # type: ignore
+
+            muz_s : torch.Tensor = None  # type: ignore
+            sigz_s : torch.Tensor = None  # type: ignore
+
             for generation in range(n_generation):
 
                 if self.debug_mode:
@@ -258,7 +271,7 @@ class BayesianBehaviorAgent(nn.Module):
                 
                 if self.debug_mode:
                     print('iter: {}, time use: {:.4f}s, free_energy: {:.3f}, kld: {:.3f}, goal_achievement: {:.3f}, sigz_p = {:.2f}, sigz_q = {:.2f}, mu_q = {:.2f}, z_q = {:2f}, early_stop: {}'.format(
-                        generation + 1, time.time() - t1, free_energy.item(), kld_batch.mean().item(), goal_achievement.mean().item(), sigz_p_expand.mean().item(), F.softplus(mean_s).mean().item(), mean_m.mean().item(), z_q.mean().item(), early_stop))
+                        generation + 1, time.time() - t1, free_energy.item(), kld_batch.mean().item(), goal_achievement.mean().item(), sigz_p_expand.mean().item(), F.softplus(mean_s).mean().item(), mean_m.mean().item(), z_q.mean().item(), early_stop)) # type: ignore
                 
                 if (generation == n_generation - 1) or (early_stop and (sigz_s[idx_sort[0]].max().item() < self.decision_precision_threshold)):
                     
@@ -287,7 +300,7 @@ class BayesianBehaviorAgent(nn.Module):
                     
                     if not self.record_final_z_q:
                         break
-                    
+
             # convert back to original shape with zero padding using mask
 
             z_q_ = z_q.view((n_population, -1, self.z_size,))[idx]
@@ -369,11 +382,11 @@ class BayesianBehaviorAgent(nn.Module):
         a_t_numpy = self.a_t.detach().cpu().numpy()[0]
         results = env.step(a_t_numpy)
 
-        if len(results) == 4:  # old Gym API
-            x_curr, r_prev, done, info = results
-        else:  # New Gym API
-            x_curr, r_prev, terminated, truncated, info = results
-            done = terminated or truncated
+        # if len(results) == 4:  # old Gym API
+        #     x_curr, r_prev, done, info = results
+        # else:  # New Gym API
+        x_curr, r_prev, terminated, truncated, info = results
+        done = terminated or truncated
         
         # ---------------------------------------
         if self.record_internal_states:

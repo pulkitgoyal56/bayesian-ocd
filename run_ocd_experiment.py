@@ -25,7 +25,7 @@ def run_trial(seed):
     torch.manual_seed(seed)
 
     if torch.backends.mps.is_available():
-        device = torch.device("mps:{}".format(seed % torch.cuda.device_count()))
+        device = torch.device("mps:0")  # {{{seed % torch.cuda.device_count()}}}
         torch.cuda.manual_seed_all(0)
     else:
         device = torch.device("cpu")
@@ -127,6 +127,8 @@ def run_trial(seed):
     rewards_all = []
 
     episode = 0
+    episode_length = 0
+    episode_return = 0
 
     episode_record_before_devaluation = 0
     episode_record_after_devaluation = 0
@@ -135,10 +137,11 @@ def run_trial(seed):
     while global_step <= max_all_steps:
         sp = env.reset()
         if isinstance(sp, tuple):  # compatible with new Gym API
-            sp = sp[0].astype(np.float32)
+            sp = sp[0].astype(np.float32)  # type: ignore
         else:
             sp = sp.astype(np.float32)
 
+        # ----------------- initialize data arrays -----------------
         observations = np.zeros([max_steps + 1, *env.observation_space.shape], dtype=np.float32)  # type: ignore
         actions = np.zeros([max_steps, *env.action_space.shape], dtype=np.float32)  # type: ignore
         rs = np.zeros([max_steps], dtype=np.float32)
@@ -153,7 +156,8 @@ def run_trial(seed):
 
         agent.init_states(-4 * (global_step - step_start) / (max_all_steps - step_start))  # anneal motor noise by linearly decreasing target policy entropy
 
-        if global_step >= step_start - max_steps - 1:
+        # ----------------- set goal state based on stage -----------------
+        if global_step > step_start - max_steps:
             if global_step >= stage_3_start_step:  # stage 3
                 env.reward_scales = reward_scales_right
                 sampled_idx = np.random.randint(0, len(observations_rewarded_right))
@@ -165,17 +169,17 @@ def run_trial(seed):
         else:
             s_goal = None
 
-        episode_length = 0
-        episode_return = 0
-
+        # Run episode
         for t in range(max_steps):
             start_time = time.time()
 
-            if global_step % step_perf_eval == 0 and global_step >= step_start - 1:
+            # Record performance
+            if global_step % step_perf_eval == 0 and global_step > step_start:
                 performance_wrt_step.append(episode_return)
                 steps_taken_wrt_step.append(episode_length)
                 global_steps.append(global_step)
 
+            # Sample from policy
             if global_step < step_start + max_steps:  # random action at initial exploration stage
                 sp, r, done, info, action = agent.step_with_env(env, sp, None, behavior="habitual")
             else:
@@ -263,6 +267,7 @@ def run_trial(seed):
         episode += 1
 
     logging.info(" ^^^^^^^^  Finished, seed {}".format(seed))
+
     # save data
     performance_wrt_step_array = np.reshape(performance_wrt_step, [-1]).astype(np.float64)
     global_steps_array = np.reshape(global_steps, [-1]).astype(np.float64)
@@ -290,11 +295,7 @@ def run_trial(seed):
         "global_steps": global_steps_array,
     }
 
-    sio.savemat(
-        savepath + task_name + "_habitization_{}.mat".format(seed),
-        data,
-        long_field_names=True,
-    )
+    sio.savemat(savepath + task_name + "_habitization_{}.mat".format(seed), data, long_field_names=True)
     torch.save(agent, savepath + task_name + "_habitization_{}.model".format(seed))
     logging.info("@@@@@@@@ Saved, seed {}".format(seed))
 

@@ -1,18 +1,23 @@
-import gym
-import numpy as np
-import pybullet as p
-from .car import THH
-from .plane import Plane
-import cv2
-# import matplotlib.pyplot as plt
 from copy import deepcopy
+
+import numpy as np
+# import matplotlib.pyplot as plt
+
+from cv2 import resize, INTER_LINEAR  # type: ignore
+from gym import Env
+from gym.spaces import box
+from gym.utils import seeding
+import pybullet
+
+from car import THH
+from plane import Plane
 
 
 def dis(p1, p2):
     return ((p1[0] - p2[0]) ** 2  + (p1[1] - p2[1]) ** 2) ** 0.5
 
 
-class TMazeEnv(gym.Env):
+class TMazeEnv(Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, mode='DIRECT', obs='vision', action_repeats=6, reward_scales=[1000, 1000],
@@ -22,19 +27,19 @@ class TMazeEnv(gym.Env):
         np.random.default_rng(seed)
 
         if not obs == 'vision':
-            self.observation_space = gym.spaces.box.Box(
+            self.observation_space = box.Box(
                 low=np.array([-np.inf] * 6, dtype=np.float32),
                 high=np.array([np.inf] * 6, dtype=np.float32))
         else:
-            self.observation_space = gym.spaces.box.Box(
+            self.observation_space = box.Box(
                 low=np.zeros([4 if return_depth else 3, 16, 64], dtype=np.float32),
                 high=np.ones([4 if return_depth else 3, 16, 64], dtype=np.float32))
 
-        self.action_space = gym.spaces.box.Box(
+        self.action_space = box.Box(
             low=np.array([-1, -1.], dtype=np.float32),
             high=np.array([1, 1.], dtype=np.float32))
 
-        self.np_random, _ = gym.utils.seeding.np_random(seed)
+        self.np_random, _ = seeding.np_random(seed)
         self.info_shape = [2]
 
         self.obs = obs
@@ -48,26 +53,26 @@ class TMazeEnv(gym.Env):
         self.collision_punishment = collision_punishment
 
         if mode == 'GUI':
-            self.client = p.connect(p.GUI)
+            self.client = pybullet.connect(pybullet.GUI)
         elif mode == 'DIRECT':
-            self.client = p.connect(p.DIRECT)
+            self.client = pybullet.connect(pybullet.DIRECT)
 
         # Reduce length of episodes for RL algorithms
-        p.setTimeStep(1/30, self.client)
+        pybullet.setTimeStep(1/30, self.client)
 
         self.action_repeats = action_repeats
         self.n_episode = 0
 
         self.zoom_coef = 2.0
 
-        self.car = None
+        self.car: THH = None  # type: ignore
         self.goal = None
         self.done = False
         self.prev_dist_to_goal = None
         # self.rendered_img = None
         self.render_rot_matrix = None
         self.reset()
-        p.resetDebugVisualizerCamera(cameraDistance=8 * self.zoom_coef, cameraYaw=0, cameraPitch=-60,
+        pybullet.resetDebugVisualizerCamera(cameraDistance=8 * self.zoom_coef, cameraYaw=0, cameraPitch=-60,
                                      cameraTargetPosition=[0, -2.5 * self.zoom_coef, 2.5 * self.zoom_coef],
                                      physicsClientId=self.client)
 
@@ -77,10 +82,10 @@ class TMazeEnv(gym.Env):
         collision = 0
         for _ in range(self.action_repeats):
             self.car.apply_action(action)
-            p.stepSimulation()
+            pybullet.stepSimulation()
 
             for wallUId in self.wallUIds:
-                self.contact_points = p.getContactPoints(self.car.car, wallUId)
+                self.contact_points = pybullet.getContactPoints(self.car.car, wallUId)
                 if len(self.contact_points) > 0:
                     collision = 1
 
@@ -88,7 +93,7 @@ class TMazeEnv(gym.Env):
             for _ in range(int(self.action_repeats * 2)):
                 # buffering
                 self.car.apply_action(np.zeros_like(action))
-                p.stepSimulation()
+                pybullet.stepSimulation()
 
         car_ob = self.car.get_position()
 
@@ -117,11 +122,11 @@ class TMazeEnv(gym.Env):
         self.info = {"ob": ob}
 
         if self.obs == 'vision':
-            return vision, reward, self.done, self.info
+            return vision, reward, self.done, False, self.info
         elif self.obs == 'both':
-            return (ob, vision), reward, self.done, dict()
+            return (ob, vision), reward, self.done, False, dict()
         else:
-            return ob, reward, self.done, {"vision":vision}
+            return ob, reward, self.done, False, {"vision":vision}
 
 
     def createObjects(self, pybullet):
@@ -222,7 +227,7 @@ class TMazeEnv(gym.Env):
                                                      basePosition=basePosition,
                                                      baseOrientation=baseOrientation))
         for wallUId in wallUIds:
-            p.changeDynamics(wallUId, -1, lateralFriction=0.)
+            pybullet.changeDynamics(wallUId, -1, lateralFriction=0.)
 
         return wallUIds
 
@@ -237,7 +242,7 @@ class TMazeEnv(gym.Env):
             position[1] = position[1] * self.zoom_coef
 
         if goal_pos is None:
-            tmp = self.np_random.randint(0, 2)
+            tmp = self.np_random.integers(0, 2)
         else:
             tmp = goal_pos
 
@@ -245,15 +250,15 @@ class TMazeEnv(gym.Env):
 
         return goal_position
 
-    def reset(self, start_pos=None, start_orientation=None, goal_pos=None):
+    def reset(self, start_pos=None, start_orientation=None, goal_pos=None):  # type: ignore
         self.done = False
 
-        p.resetSimulation(self.client)
-        p.setGravity(0, 0, -9.8)
+        pybullet.resetSimulation(self.client)
+        pybullet.setGravity(0, 0, -9.8)
         # Reload the plane and car
         self.plane = Plane(self.client)
 
-        p.changeDynamics(self.plane.id, linkIndex=-1, lateralFriction=10.0)
+        pybullet.changeDynamics(self.plane.id, linkIndex=-1, lateralFriction=10.0)
 
         if goal_pos is not None:
             self.goal_position = self.generate_goal(goal_pos)
@@ -271,7 +276,7 @@ class TMazeEnv(gym.Env):
 
         z0 = 0.5
 
-        self.wallUIds = self.createObjects(pybullet=p)
+        self.wallUIds = self.createObjects(pybullet=pybullet)
 
         # genetate initial position of the robot
         if start_pos is None:
@@ -288,11 +293,11 @@ class TMazeEnv(gym.Env):
         else:
             self.init_position = start_pos + [z0]
 
-        self.car = THH(self.client, baseOrientation=p.getQuaternionFromEuler([0, 0, theta]),
+        self.car = THH(self.client, baseOrientation=pybullet.getQuaternionFromEuler([0, 0, theta]),
                         basePosition=self.init_position, speed=5.0)
 
         for _ in range(600):
-            p.stepSimulation()  # initialize
+            pybullet.stepSimulation()  # initialize
 
         # Get observation to return
         car_ob = self.car.get_position()
@@ -305,36 +310,36 @@ class TMazeEnv(gym.Env):
 
         if self.obs == 'vision':
             frame = self.render()
-            return np.swapaxes(np.swapaxes(frame, 0, 2), 1, 2)
+            return np.swapaxes(np.swapaxes(frame, 0, 2), 1, 2), dict()
         elif self.obs == 'both':
             frame = self.render()
             proprioception = np.array(car_ob, dtype=np.float32)
             vision = np.swapaxes(np.swapaxes(frame, 0, 2), 1, 2)
-            return (proprioception, vision)
+            return (proprioception, vision), dict()
         else:
-            return np.array(car_ob, dtype=np.float32)
+            return np.array(car_ob, dtype=np.float32), dict()
 
     def render(self, mode='rgbd_array'):
         # Base information
         car_id, client_id = self.car.get_ids()
-        proj_matrix = p.computeProjectionMatrixFOV(fov=90, aspect=1,
+        proj_matrix = pybullet.computeProjectionMatrixFOV(fov=90, aspect=1,
                                                    nearVal=0.025 * self.zoom_coef, farVal=20 * self.zoom_coef)
-        pos, ori = [list(l) for l in
-                    p.getBasePositionAndOrientation(car_id, client_id)]
+        pos, ori = [list(coor) for coor in
+                    pybullet.getBasePositionAndOrientation(car_id, client_id)]
 
         pos[2] += 1.0
 
         # Rotate camera direction
-        rot_mat = np.array(p.getMatrixFromQuaternion(ori)).reshape(3, 3)
+        rot_mat = np.array(pybullet.getMatrixFromQuaternion(ori)).reshape(3, 3)
         camera_vec = np.matmul(rot_mat, [1, 0, 0])
         up_vec = np.matmul(rot_mat, np.array([0, 0, 1]))
-        view_matrix = p.computeViewMatrix(pos, pos + camera_vec, up_vec)
+        view_matrix = pybullet.computeViewMatrix(pos, pos + camera_vec, up_vec)
 
         # Display image
-        _, _, frame, depth, _ = p.getCameraImage(50, 50, view_matrix, proj_matrix)
+        _, _, frame, depth, _ = pybullet.getCameraImage(50, 50, view_matrix, proj_matrix)
         depth = np.array(depth).astype(np.float32)
         frame = np.reshape(frame, (50, 50, 4)).astype(np.float32) / 255.0
-        frame = cv2.resize(frame, (16, 16), interpolation=cv2.INTER_LINEAR)
+        frame = resize(frame, (16, 16), interpolation=INTER_LINEAR)
 
         # convert to true depth image
         true_depth = (20 * self.zoom_coef) * (0.025 * self.zoom_coef) / (
@@ -342,73 +347,73 @@ class TMazeEnv(gym.Env):
 
         depth_sensory = np.exp(- true_depth/ self.zoom_coef / 3)
         depth_sensory = np.reshape(depth_sensory, (50, 50))
-        depth_sensory = cv2.resize(depth_sensory, (16, 16), interpolation=cv2.INTER_LINEAR)
+        depth_sensory = resize(depth_sensory, (16, 16), interpolation=INTER_LINEAR)
 
-        tmp = p.getEulerFromQuaternion(ori)
+        tmp = pybullet.getEulerFromQuaternion(ori)
         tmp2 = list(tmp)
         tmp2[2] += 1 * np.pi / 2
-        ori2 =  p.getQuaternionFromEuler(tmp2)
-        rot_mat = np.array(p.getMatrixFromQuaternion(ori2)).reshape(3, 3)
+        ori2 =  pybullet.getQuaternionFromEuler(tmp2)
+        rot_mat = np.array(pybullet.getMatrixFromQuaternion(ori2)).reshape(3, 3)
         camera_vec = np.matmul(rot_mat, [1, 0, 0])
         up_vec = np.matmul(rot_mat, np.array([0, 0, 1]))
-        view_matrix = p.computeViewMatrix(pos, pos + camera_vec, up_vec)
+        view_matrix = pybullet.computeViewMatrix(pos, pos + camera_vec, up_vec)
 
         # Display image
-        _, _, frame2, depth2, _ = p.getCameraImage(50, 50, view_matrix, proj_matrix)
+        _, _, frame2, depth2, _ = pybullet.getCameraImage(50, 50, view_matrix, proj_matrix)
         depth2 = np.array(depth2).astype(np.float32)
         frame2 = np.reshape(frame2, (50, 50, 4)).astype(np.float32) / 255.0
-        frame2 = cv2.resize(frame2, (16, 16), interpolation=cv2.INTER_LINEAR)
+        frame2 = resize(frame2, (16, 16), interpolation=INTER_LINEAR)
 
         true_depth = (20 * self.zoom_coef) * (0.025 * self.zoom_coef) / (
             (20 * self.zoom_coef) - ((20 * self.zoom_coef) - (0.025 * self.zoom_coef)) * depth2)
 
         depth_sensory2 = np.exp(- true_depth / self.zoom_coef / 3)
         depth_sensory2 = np.reshape(depth_sensory2, (50, 50))
-        depth_sensory2 = cv2.resize(depth_sensory2, (16, 16), interpolation=cv2.INTER_LINEAR)
+        depth_sensory2 = resize(depth_sensory2, (16, 16), interpolation=INTER_LINEAR)
 
-        tmp = p.getEulerFromQuaternion(ori)
+        tmp = pybullet.getEulerFromQuaternion(ori)
         tmp3 = list(tmp)
         tmp3[2] += 2 * np.pi / 2
-        ori3 = p.getQuaternionFromEuler(tmp3)
-        rot_mat = np.array(p.getMatrixFromQuaternion(ori3)).reshape(3, 3)
+        ori3 = pybullet.getQuaternionFromEuler(tmp3)
+        rot_mat = np.array(pybullet.getMatrixFromQuaternion(ori3)).reshape(3, 3)
         camera_vec = np.matmul(rot_mat, [1, 0, 0])
         up_vec = np.matmul(rot_mat, np.array([0, 0, 1]))
-        view_matrix = p.computeViewMatrix(pos, pos + camera_vec, up_vec)
+        view_matrix = pybullet.computeViewMatrix(pos, pos + camera_vec, up_vec)
 
         # Display image
-        _, _, frame3, depth3, _ = p.getCameraImage(50, 50, view_matrix, proj_matrix)
+        _, _, frame3, depth3, _ = pybullet.getCameraImage(50, 50, view_matrix, proj_matrix)
         depth3 = np.array(depth3).astype(np.float32)
         frame3 = np.reshape(frame3, (50, 50, 4)).astype(np.float32) / 255.0
-        frame3 = cv2.resize(frame3, (16, 16), interpolation=cv2.INTER_LINEAR)
+        frame3 = resize(frame3, (16, 16), interpolation=INTER_LINEAR)
 
         true_depth = (20 * self.zoom_coef) * (0.025 * self.zoom_coef) / (
             (20 * self.zoom_coef) - ((20 * self.zoom_coef) - (0.025 * self.zoom_coef)) * depth3)
 
         depth_sensory3 = np.exp(- true_depth / self.zoom_coef / 3)
         depth_sensory3 = np.reshape(depth_sensory3, (50, 50))
-        depth_sensory3 = cv2.resize(depth_sensory3, (16, 16), interpolation=cv2.INTER_LINEAR)
+        depth_sensory3 = resize(depth_sensory3, (16, 16), interpolation=INTER_LINEAR)
 
-        tmp = p.getEulerFromQuaternion(ori)
+        tmp = pybullet.getEulerFromQuaternion(ori)
         tmp4 = list(tmp)
         tmp4[2] += 3 * np.pi / 2
-        ori4 = p.getQuaternionFromEuler(tmp4)
-        rot_mat = np.array(p.getMatrixFromQuaternion(ori4)).reshape(3, 3)
+        ori4 = pybullet.getQuaternionFromEuler(tmp4)
+        rot_mat = np.array(pybullet.getMatrixFromQuaternion(ori4)).reshape(3, 3)
         camera_vec = np.matmul(rot_mat, [1, 0, 0])
         up_vec = np.matmul(rot_mat, np.array([0, 0, 1]))
-        view_matrix = p.computeViewMatrix(pos, pos + camera_vec, up_vec)
+        view_matrix = pybullet.computeViewMatrix(pos, pos + camera_vec, up_vec)
 
         # Display image
-        _, _, frame4, depth4, _ = p.getCameraImage(50, 50, view_matrix, proj_matrix)
+        _, _, frame4, depth4, _ = pybullet.getCameraImage(50, 50, view_matrix, proj_matrix)
         depth4 = np.array(depth4).astype(np.float32)
         frame4 = np.reshape(frame4, (50, 50, 4)).astype(np.float32) / 255.0
-        frame4 = cv2.resize(frame4, (16, 16), interpolation=cv2.INTER_LINEAR)
+        frame4 = resize(frame4, (16, 16), interpolation=INTER_LINEAR)
 
         true_depth = (20 * self.zoom_coef) * (0.025 * self.zoom_coef) / (
             (20 * self.zoom_coef) - ((20 * self.zoom_coef) - (0.025 * self.zoom_coef)) * depth4)
 
         depth_sensory4 = np.exp(- true_depth / self.zoom_coef / 3)
         depth_sensory4 = np.reshape(depth_sensory4, (50, 50))
-        depth_sensory4 = cv2.resize(depth_sensory4, (16, 16), interpolation=cv2.INTER_LINEAR)
+        depth_sensory4 = resize(depth_sensory4, (16, 16), interpolation=INTER_LINEAR)
 
         if self.return_depth:
             return np.concatenate((np.concatenate((frame3[:, 8:, :3], frame2[:, :, :3], frame[:, :, :3],
@@ -492,4 +497,4 @@ class TMazeEnv(gym.Env):
         plt.box(False)
  
     def close(self):
-        p.disconnect(self.client)
+        pybullet.disconnect(self.client)
