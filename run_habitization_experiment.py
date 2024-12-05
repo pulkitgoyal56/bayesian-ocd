@@ -30,6 +30,7 @@ parser.add_argument('--record_final_z_q', type=int, default=0, help="whether to 
 
 # ----------- Network hyper-parameters ----------
 parser.add_argument('--beta_z', type=float, default=0.1, help="coefficient of loss function of KLD of z")
+parser.add_argument('--beta_o', type=float, default=0.1, help="coefficient of loss function of OCD loss")
 parser.add_argument('--decision_precision_threshold', type=float, default=0.05, help="decision precision threshold")
 
 # ----------- RL hyper-parameters -----------
@@ -111,6 +112,7 @@ def run_trial(seed):
     agent = BayesianBehaviorAgent(input_size=input_size,
                                   action_size=action_size,
                                   beta_z=args.beta_z,
+                                  beta_o=args.beta_o,
                                   rl_config=rl_config,
                                   record_final_z_q=args.record_final_z_q,
                                   decision_precision_threshold=args.decision_precision_threshold,
@@ -138,6 +140,7 @@ def run_trial(seed):
     loss_q_all = []
     loss_a_all = []
     kld_all = []
+    ocd_all = []
     logp_x_all = []
     rewards_all = []
 
@@ -210,12 +213,13 @@ def run_trial(seed):
             # ---- training ----
             if global_step > step_start and global_step <= step_end and global_step % train_interval == 0:
                 agent.learn(buffer) # training
-                loss, loss_v, loss_q, loss_a, kld, logp_x = agent.record_loss(buffer)  # only for recording loss, no training, computed on latest experience
+                loss, loss_v, loss_q, loss_a, kld, ocd, logp_x = agent.record_loss(buffer)  # only for recording loss, no training, computed on latest experience
                 loss_all.append(loss)
                 loss_v_all.append(loss_v)
                 loss_q_all.append(loss_q)
                 loss_a_all.append(loss_a)
                 kld_all.append(kld)
+                ocd_all.append(ocd)
                 logp_x_all.append(logp_x)
                 rewards_all.append(np.sum(rs))
 
@@ -276,6 +280,7 @@ def run_trial(seed):
             "learned_behavior": learned_behavior_np,
             "step_perf_eval": step_perf_eval,
             "beta_z": args.beta_z,
+            "beta_o": args.beta_o,
             "steps_taken_wrt_step": steps_taken_wrt_step_array,
             "performance_wrt_step": performance_wrt_step_array,
             "aif_iterations": np.array(aif_iterations),
@@ -286,6 +291,7 @@ def run_trial(seed):
             "loss_q_all": np.array(loss_q_all),
             "loss_a_all": np.array(loss_a_all),
             "kld_all": np.array(kld_all),
+            "ocd_all": np.array(ocd_all),
             "logp_x_all": np.array(logp_x_all),
             "rewards_all": np.array(rewards_all),
             "global_steps": global_steps_array}

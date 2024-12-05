@@ -24,6 +24,7 @@ class BayesianBehaviorAgent(nn.Module):
                  h_size=256,
                  z_size=4,
                  beta_z=0.1,
+                 beta_o=0.1,
                  decision_precision_threshold=0.05,
                  max_iterations=16,
                  rl_config=None,
@@ -35,6 +36,7 @@ class BayesianBehaviorAgent(nn.Module):
         self.h_size = h_size
         self.z_size = z_size
         self.beta_z = beta_z
+        self.beta_o = beta_o
         self.action_size = action_size
         self.aif_max_iterations = max_iterations
         self.decision_precision_threshold = decision_precision_threshold
@@ -223,7 +225,7 @@ class BayesianBehaviorAgent(nn.Module):
                 
                 muz_q = torch.normal(mean=mean_m, std=std_m)
                 aspsigz_q = torch.normal(mean=mean_s, std=std_s)
-                sigz_q = F.softplus(aspsigz_q) + 1e-3
+                sigz_q = F.softplus(aspsigz_q) + 1e-3  # TODO: increase \epsilon
 
                 z_q = torch.normal(mean=muz_q, std=sigz_q)
                 
@@ -241,12 +243,16 @@ class BayesianBehaviorAgent(nn.Module):
                 kld_batch = torch.mean(self.compute_kl_divergence_gaussian(muz_q, sigz_q, muz_p_expand, sigz_p_expand).view([n_population, -1]), dim=-1)
                 logpx_batch = torch.mean(logpx.view([n_population, -1]), dim=-1)
 
+                # OCD Loss, -log(sigma_z_p)
+                ocd_batch = -torch.mean(torch.log(sigz_q).sum(dim=-1).view([n_population, -1]), dim=-1) * self.beta_o  # Change to KL divergence with unit variance Gaussian distribution with mean muz_q_batch
+
                 free_energy_batch =  self.beta_z * kld_batch - logpx_batch
                 
-                idx_sort = torch.argsort(free_energy_batch, dim=0)
+                idx_sort = torch.argsort(free_energy_batch + ocd_batch, dim=0)
                 idx = idx_sort[0]
                 
                 free_energy = torch.mean(free_energy_batch)
+                ocd = torch.mean(ocd_batch)
 
                 std_m[:] = torch.sum(torch.abs(z_q[idx_sort[:n_elite]] - mean_m[:n_elite]), dim=0).expand(std_m.shape) / (n_elite - 1) 
                 mean_m[:] = torch.mean(z_q[idx_sort[:n_elite]], dim=0).expand(mean_m.shape)
@@ -254,11 +260,11 @@ class BayesianBehaviorAgent(nn.Module):
                 std_s[:] = torch.sum(torch.abs(aspsigz_q[idx_sort[:n_elite]] - mean_s[:n_elite]), dim=0).expand(std_s.shape)  / (n_elite - 1)
                 mean_s[:] = torch.mean(aspsigz_q[idx_sort[:n_elite]], dim=0).expand(mean_m.shape)
 
-                self.loss_curve[generation] = free_energy.item()
+                self.loss_curve[generation] = free_energy.item() + ocd.item()
                 
                 if self.debug_mode:
-                    print('iter: {}, time use: {:.4f}s, free_energy: {:.3f}, kld: {:.3f}, goal_achievement: {:.3f}, sigz_p = {:.2f}, sigz_q = {:.2f}, mu_q = {:.2f}, z_q = {:2f}, early_stop: {}'.format(
-                        generation + 1, time.time() - t1, free_energy.item(), kld_batch.mean().item(), goal_achievement.mean().item(), sigz_p_expand.mean().item(), F.softplus(mean_s).mean().item(), mean_m.mean().item(), z_q.mean().item(), early_stop))
+                    print('iter: {}, time use: {:.4f}s, free_energy: {:.3f}, kld: {:.3f}, ocd: {:.3f}, goal_achievement: {:.3f}, sigz_p = {:.2f}, sigz_q = {:.2f}, mu_q = {:.2f}, z_q = {:2f}, early_stop: {}'.format(
+                        generation + 1, time.time() - t1, free_energy.item(), kld_batch.mean().item(), ocd_batch.mean().item(), goal_achievement.mean().item(), sigz_p_expand.mean().item(), F.softplus(mean_s).mean().item(), mean_m.mean().item(), z_q.mean().item(), early_stop))
                 
                 if (generation == n_generation - 1) or (early_stop and (sigz_s[idx_sort[0]].max().item() < self.decision_precision_threshold)):
                     
@@ -334,7 +340,7 @@ class BayesianBehaviorAgent(nn.Module):
         self.h_t, _ = self.rnn(phi_t, self.h_t)
 
         self.muz_p_t = self.h2muzp(self.h_t)
-        self.sigz_p_t = F.softplus(self.h2aspsigzp(self.h_t)) + 1e-3
+        self.sigz_p_t = F.softplus(self.h2aspsigzp(self.h_t)) + 1e-3  # TODO: increase \epsilon
         self.z_p_t = self.reparameterize(self.muz_p_t, self.sigz_p_t)
         
         if behavior == "habitual":
@@ -446,10 +452,15 @@ class BayesianBehaviorAgent(nn.Module):
         mux_pred = self.pred_mux(z_q_batch.reshape(-1, self.z_size))
         logp_x_batch = self.compute_logp(mux_pred[:, :3], x_batch[:, :-1].reshape([-1, *self.input_size]))
         logp_x_batch += self.compute_logp(mux_pred[:, -3:], xg_batch.reshape([-1, *self.input_size]))
-        loss_batch = (self.beta_z * kld_batch - logp_x_batch) * mask_batch.reshape([-1]) # free energy loss
+
+        # OCD Loss, -log(sigma_z_p)
+        ocd_batch = -torch.log(sigz_q_batch).sum(dim=-1).reshape([-1])  # Change to KL divergence with unit variance Gaussian distribution with mean muz_q_batch
+
+        loss_batch = (self.beta_z * kld_batch - logp_x_batch + self.beta_o * ocd_batch) * mask_batch.reshape([-1]) # free energy loss
         loss = loss_batch.mean()
 
         kld = (kld_batch * mask_batch.reshape([-1])).mean()
+        ocd = (ocd_batch * mask_batch.reshape([-1])).mean()
         logp_x = (logp_x_batch * mask_batch.reshape([-1])).mean()
 
         # ==================================== RL (SAC) =======================================
@@ -565,7 +576,7 @@ class BayesianBehaviorAgent(nn.Module):
         if self.update_times < 10:
             logging.info('update once time: {} s'.format(t_end - t0))
 
-        return loss.item(), loss_v.item(), loss_q.item(), loss_a.item(), kld.item(), logp_x.item()
+        return loss.item(), loss_v.item(), loss_q.item(), loss_a.item(), kld.item(), ocd.item(), logp_x.item()
 
     def record_loss(self, buffer):
 
@@ -615,10 +626,15 @@ class BayesianBehaviorAgent(nn.Module):
             mux_pred = self.pred_mux(z_q_batch.reshape(-1, self.z_size))
             logp_x_batch = self.compute_logp(mux_pred[:, :3], x_batch[:, :-1].reshape([-1, *self.input_size]))
             logp_x_batch += self.compute_logp(mux_pred[:, -3:], xg_batch.reshape([-1, *self.input_size]))
-            loss_batch = (self.beta_z * kld_batch - logp_x_batch) * mask_batch.reshape([-1]) # free energy loss
+
+            # OCD Loss, -log(sigma_z_p)
+            ocd_batch = -torch.log(sigz_q_batch).sum(dim=-1).reshape([-1])  # Change to KL divergence with unit variance Gaussian distribution with mean muz_q_batch
+
+            loss_batch = (self.beta_z * kld_batch - logp_x_batch + self.beta_o * ocd_batch) * mask_batch.reshape([-1]) # free energy loss
             loss = loss_batch.mean()
 
             kld = (kld_batch * mask_batch.reshape([-1])).mean()
+            ocd = (ocd_batch * mask_batch.reshape([-1])).mean()
             logp_x = (logp_x_batch * mask_batch.reshape([-1])).mean()
 
             # ==================================== RL (SAC) =======================================
@@ -707,7 +723,7 @@ class BayesianBehaviorAgent(nn.Module):
                 + torch.mean(torch.mean((mua_tensor * mask_batch.repeat_interleave(
                     mua_tensor.size()[-1], dim=-1)).pow(2), dim=[1, 2])))
 
-        return loss.item(), loss_v.item(), loss_q.item(), loss_a.item(), kld.item(), logp_x.item()
+        return loss.item(), loss_v.item(), loss_q.item(), loss_a.item(), kld.item(), ocd.item(), logp_x.item()
 
     def init_recording_variables(self):
         self.model_h_series = []
