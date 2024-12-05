@@ -40,7 +40,7 @@ parser.add_argument('--step_start', type=int, default=100000, help="steps starti
 args = parser.parse_args()
 
 savepath = f'./data_{args.beta_o * 10:.0f}/'
-details_savepath = f'./details/_{args.beta_o * 10:.0f}/'
+details_savepath = f'./details_{args.beta_o * 10:.0f}/'
 
 reward_scales_left = [1000, 500]
 reward_scales_right = [0, 500]
