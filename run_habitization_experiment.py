@@ -37,10 +37,10 @@ parser.add_argument('--decision_precision_threshold', type=float, default=0.05, 
 parser.add_argument('--step_start', type=int, default=100000, help="steps starting training")
 
 # ==================== arg parse & hyper-parameter setting ==================
-savepath = './data/'
-details_savepath = './details/'
-
 args = parser.parse_args()
+
+savepath = f'./data_{args.beta_o}/'
+details_savepath = f'./details/_{args.beta_o}'
 
 reward_scales_left = [1000, 500]
 reward_scales_right = [0, 500]
