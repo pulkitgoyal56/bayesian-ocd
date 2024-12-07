@@ -276,7 +276,9 @@ def run_trial(seed):
 
     learned_behavior_np = np.stack(learned_behavior, axis=0)
 
-    data = {"max_steps": max_steps,
+    data = {"step_start": step_start,
+            "max_all_steps": max_all_steps,
+            "max_steps": max_steps,
             "learned_behavior": learned_behavior_np,
             "step_perf_eval": step_perf_eval,
             "beta_z": args.beta_z,
