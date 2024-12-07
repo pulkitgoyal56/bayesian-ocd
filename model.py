@@ -264,7 +264,7 @@ class BayesianBehaviorAgent(nn.Module):
                 
                 if self.debug_mode:
                     print('iter: {}, time use: {:.4f}s, free_energy: {:.3f}, kld: {:.3f}, ocd: {:.3f}, goal_achievement: {:.3f}, sigz_p = {:.2f}, sigz_q = {:.2f}, mu_q = {:.2f}, z_q = {:2f}, early_stop: {}'.format(
-                        generation + 1, time.time() - t1, free_energy.item(), kld_batch.mean().item(), ocd_batch.mean().item(), goal_achievement.mean().item(), sigz_p_expand.mean().item(), F.softplus(mean_s).mean().item(), mean_m.mean().item(), z_q.mean().item(), early_stop))
+                        generation + 1, time.time() - t1, free_energy.item(), self.beta_z * kld_batch.mean().item(), ocd.item(), goal_achievement.mean().item(), sigz_p_expand.mean().item(), F.softplus(mean_s).mean().item(), mean_m.mean().item(), z_q.mean().item(), early_stop))
                 
                 if (generation == n_generation - 1) or (early_stop and (sigz_s[idx_sort[0]].max().item() < self.decision_precision_threshold)):
                     
@@ -447,7 +447,7 @@ class BayesianBehaviorAgent(nn.Module):
         sigz_q_batch = F.softplus(aspsigz_q_batch) + 1e-3
         z_q_batch = self.reparameterize(muz_q_batch, sigz_q_batch)
 
-        # --------- free energy loss function  ------------
+        # --------- free energy loss function ------------
         kld_batch = self.compute_kl_divergence_gaussian(muz_q_batch, sigz_q_batch, muz_p_batch, sigz_p_batch).reshape([-1])
         mux_pred = self.pred_mux(z_q_batch.reshape(-1, self.z_size))
         logp_x_batch = self.compute_logp(mux_pred[:, :3], x_batch[:, :-1].reshape([-1, *self.input_size]))
@@ -621,7 +621,7 @@ class BayesianBehaviorAgent(nn.Module):
             sigz_q_batch = F.softplus(aspsigz_q_batch) + 1e-3
             z_q_batch = self.reparameterize(muz_q_batch, sigz_q_batch)
 
-            # --------- free energy loss function  ------------
+            # --------- free energy loss function ------------
             kld_batch = self.compute_kl_divergence_gaussian(muz_q_batch, sigz_q_batch, muz_p_batch, sigz_p_batch).reshape([-1])
             mux_pred = self.pred_mux(z_q_batch.reshape(-1, self.z_size))
             logp_x_batch = self.compute_logp(mux_pred[:, :3], x_batch[:, :-1].reshape([-1, *self.input_size]))

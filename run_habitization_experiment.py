@@ -17,8 +17,8 @@ parser = argparse.ArgumentParser()
 logging.basicConfig(level=logging.INFO)
 
 # ----------- General properties -------------
-parser.add_argument('--max_all_steps', type=int, default=650000, help="total environment steps")
-parser.add_argument('--stage_3_start_step', type=int, default=500000, help="stage 3 start step")
+parser.add_argument('--max_all_steps', type=int, default=600000, help="total environment steps")
+parser.add_argument('--stage_3_start_step', type=int, default=400000, help="stage 3 start step")
 
 parser.add_argument('--verbose', type=float, default=0, help="Verbose")
 parser.add_argument('--n_seed', type=int, default=1, help="number of seeds")
